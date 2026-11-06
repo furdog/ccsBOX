@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Оновлення Прошивки @ENV:TARGET_NAME (Вбудована Прошивка)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #222244;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            text-align: center;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s ease;
+            margin-top: 20px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+        .status-success {
+            color: green;
+        }
+        .status-error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Оновлення Прошивки @ENV:TARGET_NAME</h1>
+        <p>
+            Ця сторінка містить вбудовану прошивку для вашого пристрою. <br>
+            Переконайтесь, що ви підключені до точки доступу @ENV:TARGET_NAME, перш ніж натискати "Завантажити Прошивку".
+        </p>
+
+        <p>
+	    Тип пристрою: @ENV:TARGET <br>
+            Версія прошивки: @ENV:GIT_REPO_VERSION
+        </p>
+
+        <button id="updateBtn">Завантажити Прошивку</button>
+        <p id="status">Готово до оновлення.</p>
+        <p style="font-size: 0.8em; color: #999;">
+            Після успішного завантаження пристрій @ENV:TARGET_NAME перезавантажиться. Будь ласка, зачекайте.
+        </p>
+    </div>
+
+    <script>
+        // === ВАЖЛИВО: ВСТАВТЕ ВАШУ BASE64-ПРОШИВКУ СЮДИ ===
+        // Ви можете згенерувати BASE64-код файлу (наприклад, firmware.bin або firmware.zip)
+        // за допомогою онлайн-інструментів або командного рядка:
+        // Linux/macOS: base64 -w 0 your_firmware.bin > firmware.b64
+        // Windows (PowerShell): [System.Convert]::ToBase64String([System.IO.File]::ReadAllBytes("your_firmware.bin")) | clip
+        // Якщо ваш /update ендпоінт очікує BIN, а не ZIP, переконайтесь, що тут BIN.
+        // Замініть 'YOUR_BASE64_ENCODED_FIRMWARE_OR_ZIP_HERE' на ваш фактичний Base64-код.
+        const FIRMWARE_BASE64 = "@ENV:BASE64_ENCODED_FIRMWARE";
+
+        // Вкажіть ім'я файлу, яке очікує ваш /update ендпоінт.
+        // Зазвичай для ESP OTA це 'firmware.bin', навіть якщо ви надсилаєте ZIP
+        // і ESP його розпаковує (що є рідкісним для стандартних OTA).
+        // Якщо ви надсилаєте ZIP, і ваш ESP розрахований на ZIP, змініть на 'firmware.zip'.
+        const FILENAME = "firmware.bin"; 
+        // ===================================================
+
+        const updateBtn = document.getElementById('updateBtn');
+        const statusDiv = document.getElementById('status');
+
+        updateBtn.addEventListener('click', async () => {
+            if (!FIRMWARE_BASE64 || FIRMWARE_BASE64 === "YOUR_BASE64_ENCODED_FIRMWARE_OR_ZIP_HERE") {
+                statusDiv.textContent = 'Помилка: Прошивка не вбудована. Будь ласка, вставте Base64-код.';
+                statusDiv.className = 'status-error';
+                return;
+            }
+
+            statusDiv.textContent = 'Підготовка до завантаження...';
+            statusDiv.className = '';
+            updateBtn.disabled = true;
+
+            try {
+                // Декодування Base64 в двійкові дані (Uint8Array)
+                const binaryString = atob(FIRMWARE_BASE64);
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+
+                // Створення об'єкта Blob (двійковий об'єкт файлу)
+                // Використовуйте 'application/octet-stream' для загальних двійкових даних
+                const blob = new Blob([bytes], { type: 'application/octet-stream' });
+
+                // Створення FormData, яке імітує відправку файлу з форми
+                const formData = new FormData();
+                // 'file' - це назва поля, яку зазвичай очікує WebUpdater на ESP32/ESP8266
+                formData.append('file', blob, FILENAME); 
+
+                statusDiv.textContent = 'Завантаження прошивки... Це може зайняти деякий час.';
+
+                const response = await fetch('http://@ENV:OTA_IP/update', {
+                    method: 'POST',
+                    /* headers: {
+                       'X-FileSize': len, // Set the custom header
+                    },*/
+                    body: formData // fetch API автоматично встановить Content-Type: multipart/form-data
+                });
+
+                if (response.ok) {
+                    statusDiv.textContent = 'Прошивка успішно завантажена';
+                    statusDiv.className = 'status-success';
+                    
+                    // --- Додано для деактивації кнопки та зміни кольору фону ---
+                    document.body.style.backgroundColor = '#227722'; // Змінює колір фону на світло-зелений
+                    updateBtn.disabled = true; // Деактивує кнопку
+                    // --------------------------------------------------------
+                } else {
+                    const errorText = await response.text();
+                    statusDiv.textContent = `Помилка завантаження: ${response.status} ${response.statusText} - ${errorText}`;
+                    statusDiv.className = 'status-error';
+                    updateBtn.disabled = false;
+                }
+            } catch (error) {
+                statusDiv.textContent = `Помилка мережі/обробки: ${error.message}. Переконайтесь, що ви підключені до @ENV:TARGET_NAME.`;
+                statusDiv.className = 'status-error';
+                updateBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
