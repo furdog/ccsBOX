@@ -167,7 +167,7 @@ void ccsbox_box_update(struct ccsbox *self, const uint32_t delta_time_ms)
 
 	/* BEFORE CHARGING */
 	/* If entered charging state and emulating charge mode */
-	if (!self->charging_ongoing &&
+	if (!self->charging_ongoing && kangoo_bms_is_awake(&self->bmsmon) &&
 	    (self->foccci.chgr_state == FCI_CHGR_STATE_CHARGING_DC) &&
 	    self->settings.emulate_charge) {
 		if (kangoo_charge_mode_is_stopped(&self->chgmode)) {
@@ -181,7 +181,7 @@ void ccsbox_box_update(struct ccsbox *self, const uint32_t delta_time_ms)
 	}
 
 	/* If entered charging state and NOT emulating charge mode */
-	if (!self->charging_ongoing &&
+	if (!self->charging_ongoing && kangoo_bms_is_awake(&self->bmsmon) &&
 	    (self->foccci.chgr_state == FCI_CHGR_STATE_CHARGING_DC) &&
 	    !self->settings.emulate_charge) {
 		self->foccci.batt_flags |= FCI_BATT_FLAG_CHARGE_ALLOWED;

@@ -22,6 +22,23 @@ Based on **esp32c6 super mini** board (at the moment of creation).
 
 ### What's the foccci configuration (CAN mapping)?
 
+> [!CAUTION]
+> `TargetVoltage` parameter is omited and is never set via ccsBOX.
+>
+> Stock ccs32clara will not start charging without this parameter.
+>
+> In order to make it work, change `TargetVoltage` definition in ccs32clara project:
+
+```diff
+-    TESTP_ENTRY(CAT_CHARGE,  TargetVoltage,        "V",       0,      1000,   0,      3   ) \
++    PARAM_ENTRY(CAT_CHARGE,  TargetVoltage,        "V",       0,      1000,   0,      3   ) \
+```
+
+This was done in order to save value in the persistant memory.
+This is temporary and will be changed soon.
+
+---
+
 - Message ID: 0x778 (Foccci transmits to ccsBOX)
 
 ```sh
@@ -59,3 +76,5 @@ or openinverter web interface as well.
 > 09.11.2026
 
 - First release (not tested on real hardware)
+
+- Tested on bench. Works as intended.
