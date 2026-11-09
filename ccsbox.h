@@ -1,5 +1,5 @@
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "src/foccci_can_interface.h"
 #include "src/generic_can_frame.h"
@@ -25,7 +25,8 @@ struct ccsbox {
 
 	float limit_current_by_temp_A;
 
-	bool allow_charging;
+	bool emergency_stop;
+	bool charging_ongoing;
 };
 
 void ccsbox_init(struct ccsbox *self)
@@ -117,61 +118,7 @@ void ccsbox_box_update(struct ccsbox *self, const uint32_t delta_time_ms)
 	    kangoo_charge_mode_update(&self->chgmode, delta_time_ms);
 	fci_step(&self->foccci, delta_time_ms);
 
-	if ((int)bms_event > 0) {
-		printf("BMS_MON_EVENT:     %i\n", (int)bms_event);
-	}
-
-	if ((int)charge_mode_event > 0) {
-		printf("CHARGE_MODE_EVENT: %i\n", (int)charge_mode_event);
-	}
-
-	if (bms_event == KANGOO_BMS_MON_EVENT_SLEEP) {
-		self->foccci.batt_flags	  &= ~FCI_BATT_FLAG_CHARGE_ALLOWED;
-		self->foccci.batt_currq_A  = 0U;
-		kangoo_charge_mode_stop(&self->chgmode);
-	}
-
-	if (kangoo_bms_is_awake(&self->bmsmon)) {
-		self->foccci.batt_volt_V =
-		    kangoo_bms_get_voltage_V(&self->bmsmon);
-		self->foccci.batt_soc_pct =
-		    kangoo_bms_get_soc_PCT(&self->bmsmon);
-	}
-
-	if (self->foccci.chgr_state == FCI_CHGR_STATE_PLUGGEDIN) {
-		if (kangoo_charge_mode_is_stopped(&self->chgmode)) {
-			kangoo_charge_mode_start(&self->chgmode);
-		}
-
-		self->filter_bcb_messages = true;
-	}
-
-	if (charge_mode_event == KANGOO_CHARGE_MODE_EVENT_READY) {
-		self->foccci.batt_flags |= FCI_BATT_FLAG_CHARGE_ALLOWED;
-	}
-
-	if (charge_mode_event == KANGOO_CHARGE_MODE_EVENT_STOP) {
-		self->foccci.batt_flags &= ~FCI_BATT_FLAG_CHARGE_ALLOWED;
-		self->filter_bcb_messages = false;
-	}
-
-	/* If charging mode is not enabled, we assume charging is performed
-	 * via recuperation, so we always set allow charge to true */
-	if (!self->settings.emulate_charge) {
-		self->allow_charging = true;
-		/* Allow charging if we're in charge mode */
-	} else if (kangoo_charge_mode_is_running(&self->chgmode)) {
-		self->allow_charging = true;
-		/* Do not allow charging if charging mode is enabled, but
-		 * vehicle is not in charging mode yet */
-	} else {
-		self->allow_charging = false;
-	}
-
-	if (kangoo_bms_is_sleep(&self->bmsmon)) {
-		self->allow_charging = false;
-	}
-
+	/* LIMITS */
 	float max_input_kwt = kangoo_bms_get_max_input_kwt(&self->bmsmon);
 	float voltage	    = kangoo_bms_get_voltage_V(&self->bmsmon);
 
@@ -195,4 +142,95 @@ void ccsbox_box_update(struct ccsbox *self, const uint32_t delta_time_ms)
 	_ccsbox_limit_current_by_temp(self, &limit_current);
 
 	self->limit_current_by_temp_A = limit_current;
+
+	if ((int)bms_event > 0) {
+		printf("BMS_MON_EVENT:     %i\n", (int)bms_event);
+	}
+
+	if ((int)charge_mode_event > 0) {
+		printf("CHARGE_MODE_EVENT: %i\n", (int)charge_mode_event);
+	}
+
+	/* EMERGENCY SITUATIONS */
+	/* If BMS goes into sleep or emergency stop */
+	if ((bms_event == KANGOO_BMS_MON_EVENT_SLEEP) ||
+	    (self->emergency_stop)) {
+		self->foccci.batt_flags	  &= ~FCI_BATT_FLAG_CHARGE_ALLOWED;
+		self->foccci.batt_currq_A  = 0U;
+	}
+
+	/* If charge mode is running but charger is stopped */
+	if (kangoo_charge_mode_is_running(&self->chgmode) &&
+	    (self->foccci.chgr_state == FCI_CHGR_STATE_IDLE)) {
+		kangoo_charge_mode_stop(&self->chgmode);
+	}
+
+	/* BEFORE CHARGING */
+	/* If entered charging state and emulating charge mode */
+	if (!self->charging_ongoing &&
+	    (self->foccci.chgr_state == FCI_CHGR_STATE_CHARGING_DC) &&
+	    self->settings.emulate_charge) {
+		if (kangoo_charge_mode_is_stopped(&self->chgmode)) {
+			kangoo_charge_mode_start(&self->chgmode);
+			self->foccci.batt_flags |=
+			    FCI_BATT_FLAG_CHARGE_ALLOWED;
+		}
+
+		self->filter_bcb_messages = true;
+		self->charging_ongoing	  = true;
+	}
+
+	/* If entered charging state and NOT emulating charge mode */
+	if (!self->charging_ongoing &&
+	    (self->foccci.chgr_state == FCI_CHGR_STATE_CHARGING_DC) &&
+	    !self->settings.emulate_charge) {
+		self->foccci.batt_flags |= FCI_BATT_FLAG_CHARGE_ALLOWED;
+		self->charging_ongoing	 = true;
+	}
+
+	/* Allow charging if charge mode is fully ready */
+	/* if (charge_mode_event == KANGOO_CHARGE_MODE_EVENT_READY) { */
+	/* This is only triggered after vehicle is fully ready to
+	 *  charge. Doesn't work though, because it sets this flag
+	    long after EVSE judges this as charge stop signal.
+	   So we set this flag right after kangoo_charge_mode_start(...)
+	   Not sure if it works either... */
+
+	/* self->foccci.batt_flags |= FCI_BATT_FLAG_CHARGE_ALLOWED; */
+	/*}*/
+
+	/* WHILE CHARGING */
+	/* While BMS is awake */
+	if (kangoo_bms_is_awake(&self->bmsmon)) {
+		self->foccci.batt_volt_V =
+		    kangoo_bms_get_voltage_V(&self->bmsmon);
+		self->foccci.batt_soc_pct =
+		    kangoo_bms_get_soc_PCT(&self->bmsmon);
+
+		if (!self->emergency_stop) {
+			self->foccci.batt_currq_A =
+			    self->limit_current_by_temp_A;
+		} else {
+			self->foccci.batt_currq_A = 0.0f;
+		}
+	}
+
+	/* AFTER CHARGING */
+	/* Stop filtering BCB messages if charge mode stopped */
+	if (charge_mode_event == KANGOO_CHARGE_MODE_EVENT_STOP) {
+		self->foccci.batt_flags	  &= ~FCI_BATT_FLAG_CHARGE_ALLOWED;
+		self->filter_bcb_messages  = false;
+	}
+
+	/* While IDLE stop charge mode (if enabled) and set charge_ongoing to
+	 * false */
+	if (self->foccci.chgr_state == FCI_CHGR_STATE_IDLE) {
+		if (kangoo_charge_mode_is_stopped(&self->chgmode)) {
+			self->charging_ongoing = false;
+		}
+
+		kangoo_charge_mode_stop(&self->chgmode);
+
+		self->emergency_stop = false;
+	}
 }

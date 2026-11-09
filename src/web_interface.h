@@ -92,7 +92,7 @@ void web_recv_json(const char *payload)
 		break;
 
 	case NETMSG_EMERGENCY_STOP:
-		// TODO
+		ccsbox.emergency_stop = true;
 		break;
 
 	case NETMSG_WIFI_STOP:

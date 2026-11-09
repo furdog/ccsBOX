@@ -13,13 +13,13 @@
  *
  * What's the foccci configuration (CAN mapping)?
  * - Message ID: 0x778 (Foccci transmits to ccsBOX)
- * can t chgr_state 1911 63 -8 1.0 0
+ * can t PortState 1912 63 -8 1.0 0
  *
  * - Message ID: 0x777 (Foccci receives from ccsBOX)
- * can r batt_volt_V  1911 63 -16 0.5  0
- * can r batt_cur_A   1911 47 -16 0.5  0
- * can r batt_soc_pct 1911 31 -16 1.0 0
- * can r batt_flags   1911 15 -16 1.00 0 */
+ * can r BatteryVoltage  1911 63 -16 0.5 0
+ * can r ChargeCurrent   1911 47 -16 0.5 0
+ * can r soc             1911 31 -16 1.0 0
+ * can r enable          1911 15 -16 1.0 0 */
 #ifndef FOCCI_CAN_INTERFACE_H
 #define FOCCI_CAN_INTERFACE_H
 #include <stdbool.h>
@@ -40,11 +40,11 @@ enum fci_batt_flags {
 
 /** Foccci CCS charger state. */
 enum fci_chgr_state {
-	FCI_CHGR_STATE_IDLE	   = 0,
+	FCI_CHGR_STATE_IDLE	   = 0, /** Present in CCS DC */
 	FCI_CHGR_STATE_PLUGGEDIN   = 1,
 	FCI_CHGR_STATE_READY	   = 2,
 	FCI_CHGR_STATE_CHARGING_AC = 3,
-	FCI_CHGR_STATE_CHARGING_DC = 4,
+	FCI_CHGR_STATE_CHARGING_DC = 4, /** Present in CCS DC */
 	FCI_CHGR_STATE_STOPPING	   = 5,
 	FCI_CHGR_STATE_UNLOCK	   = 6,
 	FCI_CHGR_STATE_PORTERROR   = 7
@@ -58,7 +58,7 @@ struct fci {
 	float	 batt_soc_pct;
 	uint16_t batt_flags;
 
-	bool send_allowed;
+	bool	 send_allowed;
 	uint32_t send_interval_r1ms;
 };
 
@@ -113,7 +113,7 @@ bool fci_get_output_frame(struct fci *self, struct generic_can_frame *frame)
 		frame->data[1U] = ((uint32_t)batt_flags_raw >> 0U) & 0xFFU;
 		frame->data[0U] = ((uint32_t)batt_flags_raw >> 8U) & 0xFFU;
 
-		success		= true;
+		success = true;
 	}
 	/* NOLINTEND(readability-magic-numbers) */
 
@@ -127,7 +127,7 @@ void fci_step(struct fci *self, const uint32_t delta_time_r1ms)
 	/** After FCI_SEND_INTERVAL_MS allow frame send */
 	if (self->send_interval_r1ms >= FCI_SEND_INTERVAL_MS) {
 		self->send_interval_r1ms = 0U;
-		self->send_allowed = true;
+		self->send_allowed	 = true;
 	}
 }
 
