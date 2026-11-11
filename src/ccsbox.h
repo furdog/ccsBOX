@@ -6,6 +6,9 @@
 #include "src/kangoo_bms_mon.h"
 #include "src/kangoo_charge_mode.h"
 
+/** Target voltage sent to FOCCCI. */
+#define CCSBOX_TARGET_VOLTAGE_V 395
+
 struct ccsbox_settings {
 	float limit_temp_C;
 	float max_power_kwt;
@@ -206,6 +209,7 @@ void ccsbox_box_update(struct ccsbox *self, const uint32_t delta_time_ms)
 		    kangoo_bms_get_voltage_V(&self->bmsmon);
 		self->foccci.batt_soc_pct =
 		    kangoo_bms_get_soc_PCT(&self->bmsmon);
+		self->foccci.batt_target_voltage_V = CCSBOX_TARGET_VOLTAGE_V;
 
 		if (!self->emergency_stop) {
 			self->foccci.batt_currq_A =

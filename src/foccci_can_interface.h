@@ -18,8 +18,9 @@
  * - Message ID: 0x777 (Foccci receives from ccsBOX)
  * can r BatteryVoltage  1911 63 -16 0.5 0
  * can r ChargeCurrent   1911 47 -16 0.5 0
- * can r soc             1911 31 -16 1.0 0
- * can r enable          1911 15 -16 1.0 0 */
+ * can r soc             1911 31 -8  1.0 0
+ * can r enable          1911 23 -8  1.0 0
+ * can r TargetVoltage   1911 15 -16 0.5 0 */
 #ifndef FOCCI_CAN_INTERFACE_H
 #define FOCCI_CAN_INTERFACE_H
 #include <stdbool.h>
@@ -53,10 +54,11 @@ enum fci_chgr_state {
 struct fci {
 	uint8_t chgr_state;
 
-	float	 batt_volt_V;
-	float	 batt_currq_A;
-	float	 batt_soc_pct;
-	uint16_t batt_flags;
+	float	batt_volt_V;
+	float	batt_currq_A;
+	float	batt_soc_pct;
+	uint8_t batt_flags;
+	float	batt_target_voltage_V;
 
 	bool	 send_allowed;
 	uint32_t send_interval_r1ms;
@@ -98,6 +100,8 @@ bool fci_get_output_frame(struct fci *self, struct generic_can_frame *frame)
 		    (int16_t)(self->batt_currq_A * 2.0F);
 		const int16_t batt_soc_raw   = (int16_t)self->batt_soc_pct;
 		const int16_t batt_flags_raw = (int16_t)self->batt_flags;
+		const int16_t batt_target_voltage_V =
+		    (int16_t)(self->batt_target_voltage_V * 2.0F);
 
 		self->send_allowed = false;
 
@@ -109,9 +113,11 @@ bool fci_get_output_frame(struct fci *self, struct generic_can_frame *frame)
 		frame->data[5U] = ((uint32_t)batt_cur_raw >> 0U) & 0xFFU;
 		frame->data[4U] = ((uint32_t)batt_cur_raw >> 8U) & 0xFFU;
 		frame->data[3U] = ((uint32_t)batt_soc_raw >> 0U) & 0xFFU;
-		frame->data[2U] = ((uint32_t)batt_soc_raw >> 8U) & 0xFFU;
-		frame->data[1U] = ((uint32_t)batt_flags_raw >> 0U) & 0xFFU;
-		frame->data[0U] = ((uint32_t)batt_flags_raw >> 8U) & 0xFFU;
+		frame->data[2U] = ((uint32_t)batt_flags_raw >> 0U) & 0xFFU;
+		frame->data[1U] =
+		    ((uint32_t)batt_target_voltage_V >> 0U) & 0xFFU;
+		frame->data[0U] =
+		    ((uint32_t)batt_target_voltage_V >> 8U) & 0xFFU;
 
 		success = true;
 	}
